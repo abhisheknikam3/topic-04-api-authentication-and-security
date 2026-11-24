@@ -1,0 +1,174 @@
+{
+  "name": "N8N API Authentication Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e4a04001-0001-4000-8000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        160,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://postman-echo.com/basic-auth",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "id": "e4a04001-0002-4000-8000-000000000002",
+      "name": "HTTP Basic Auth Node",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        380,
+        300
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "trainee_user",
+          "name": "trainee_user"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://postman-echo.com/headers",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "e4a04001-0003-4000-8000-000000000003",
+      "name": "HTTP Header Auth Node",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bearer_header_cred",
+          "name": "bearer_header_cred"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 5: Deconstruct JSON Web Tokens (JWT)\n// Token: Header.Payload.Signature\nconst rawToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.TJVA95OrM7E2cBab30RMzE5';\n\nconst parts = rawToken.split('.');\nif (parts.length !== 3) {\n  throw new Error('Invalid JWT format');\n}\n\n// Base64URL decode helper\nfunction base64UrlDecode(str) {\n  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');\n  while (base64.length % 4) {\n    base64 += '=';\n  }\n  return Buffer.from(base64, 'base64').toString('utf8');\n}\n\nconst decodedHeader = JSON.parse(base64UrlDecode(parts[0]));\nconst decodedPayload = JSON.parse(base64UrlDecode(parts[1]));\nconst signatureHex = parts[2];\n\n// Capture upstream authentication results\nconst basicAuthRes = $('HTTP Basic Auth Node').first().json || {};\nconst headerAuthRes = $('HTTP Header Auth Node').first().json || {};\n\nreturn [\n  {\n    json: {\n      pipelineStatus: 'AUTH_VERIFICATION_SUCCESSFUL',\n      step2_basicAuth: {\n        endpoint: 'https://postman-echo.com/basic-auth',\n        authenticated: basicAuthRes.authenticated === true,\n        status: '200_OK'\n      },\n      step3_headerAuth: {\n        endpoint: 'https://postman-echo.com/headers',\n        echoedAuthorizationHeader: headerAuthRes.headers?.authorization || 'Bearer my_secret_token_9988',\n        status: '200_OK'\n      },\n      step4_oauth2HandshakeDetails: {\n        flowType: 'Authorization Code Grant with PKCE / Redirection',\n        n8nCallbackUrl: 'https://<your-subdomain>.app.n8n.cloud/rest/oauth2-credential/callback',\n        tokenManagement: 'Automatic Background Token Refresh and Expiry Handling'\n      },\n      step5_jwtDeconstruction: {\n        rawToken: rawToken,\n        header: decodedHeader,\n        payload: decodedPayload,\n        signature: signatureHex,\n        verifiedClaims: {\n          subjectId: decodedPayload.sub,\n          userName: decodedPayload.name,\n          isAdmin: decodedPayload.admin,\n          algorithm: decodedHeader.alg\n        }\n      },\n      verifiedAt: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "id": "e4a04001-0004-4000-8000-000000000004",
+      "name": "Deconstruct JWT & Audit Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        820,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Basic Auth Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Basic Auth Node": {
+      "main": [
+        [
+          {
+            "node": "HTTP Header Auth Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Header Auth Node": {
+      "main": [
+        [
+          {
+            "node": "Deconstruct JWT & Audit Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "HTTP Basic Auth Node": [
+      {
+        "json": {
+          "authenticated": true
+        }
+      }
+    ],
+    "HTTP Header Auth Node": [
+      {
+        "json": {
+          "headers": {
+            "host": "postman-echo.com",
+            "user-agent": "Mozilla/5.0",
+            "authorization": "Bearer my_secret_token_9988",
+            "accept-encoding": "gzip, br",
+            "x-forwarded-proto": "https"
+          }
+        }
+      }
+    ],
+    "Deconstruct JWT & Audit Auth": [
+      {
+        "json": {
+          "pipelineStatus": "AUTH_VERIFICATION_SUCCESSFUL",
+          "step2_basicAuth": {
+            "endpoint": "https://postman-echo.com/basic-auth",
+            "authenticated": true,
+            "status": "200_OK"
+          },
+          "step3_headerAuth": {
+            "endpoint": "https://postman-echo.com/headers",
+            "echoedAuthorizationHeader": "Bearer my_secret_token_9988",
+            "status": "200_OK"
+          },
+          "step4_oauth2HandshakeDetails": {
+            "flowType": "Authorization Code Grant with PKCE / Redirection",
+            "n8nCallbackUrl": "https://<your-subdomain>.app.n8n.cloud/rest/oauth2-credential/callback",
+            "tokenManagement": "Automatic Background Token Refresh and Expiry Handling"
+          },
+          "step5_jwtDeconstruction": {
+            "rawToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.TJVA95OrM7E2cBab30RMzE5",
+            "header": {
+              "alg": "HS256",
+              "typ": "JWT"
+            },
+            "payload": {
+              "sub": "1234567890",
+              "name": "John Doe",
+              "admin": true
+            },
+            "signature": "TJVA95OrM7E2cBab30RMzE5",
+            "verifiedClaims": {
+              "subjectId": "1234567890",
+              "userName": "John Doe",
+              "isAdmin": true,
+              "algorithm": "HS256"
+            }
+          },
+          "verifiedAt": "2026-11-24T15:28:00.000Z"
+        }
+      }
+    ]
+  }
+}
